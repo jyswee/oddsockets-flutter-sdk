@@ -1,0 +1,9 @@
+.dart_tool/
+.packages
+build/
+.pub/
+*.iml
+.idea/
+.DS_Store
+*.log
+JAVASCRIPT_PATTERN_COMPLIANCE.md

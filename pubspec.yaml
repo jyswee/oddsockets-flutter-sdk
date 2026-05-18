@@ -1,0 +1,93 @@
+name: oddsockets_flutter
+description: Official Flutter/Dart SDK for OddSockets real-time messaging platform
+version: 0.1.0-beta.1
+homepage: https://oddsockets.com
+repository: https://github.com/jyswee/oddsockets-flutter-sdk
+issue_tracker: https://github.com/jyswee/oddsockets-flutter-sdk/issues
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+  flutter: ">=3.10.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  
+  # HTTP client for REST operations
+  dio: ^5.3.2
+  
+  # WebSocket support
+  web_socket_channel: ^2.4.0
+  
+  # JSON serialization
+  json_annotation: ^4.8.1
+  
+  # State management
+  flutter_bloc: ^8.1.3
+  bloc: ^8.1.2
+  
+  # Reactive programming
+  rxdart: ^0.27.7
+  
+  # Logging
+  logger: ^2.0.2+1
+  
+  # UUID generation
+  uuid: ^4.1.0
+  
+  # Connectivity checking
+  connectivity_plus: ^5.0.1
+  
+  # Shared preferences for persistence
+  shared_preferences: ^2.2.2
+  
+  # Meta annotations
+  meta: ^1.9.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  
+  # Code generation
+  build_runner: ^2.4.7
+  json_serializable: ^6.7.1
+  
+  # Linting
+  flutter_lints: ^3.0.1
+  
+  # Testing
+  mockito: ^5.4.2
+  bloc_test: ^9.1.4
+
+flutter:
+  # No assets currently
+
+# Publish configuration
+publish_to: 'none' # Remove this line to publish to pub.dev
+
+# Additional metadata
+topics:
+  - websockets
+  - realtime
+  - messaging
+  - flutter
+  - dart
+  - mobile
+  - cross-platform
+
+screenshots:
+  - description: 'Flutter chat app using OddSockets'
+    path: screenshots/chat_app.png
+  - description: 'Real-time notifications'
+    path: screenshots/notifications.png
+
+funding:
+  - https://github.com/sponsors/oddsockets
+
+platforms:
+  android:
+  ios:
+  linux:
+  macos:
+  web:
+  windows:
