@@ -30,7 +30,7 @@ class OddSocketsConfig {
   /// Creates a new configuration instance.
   const OddSocketsConfig({
     required this.apiKey,
-    this.managerUrl = 'https://manager1.oddsockets.tyga.network',
+    this.managerUrl = 'https://connect.oddsockets.tyga.network',
     this.userId,
     this.autoConnect = true,
     this.reconnectAttempts = 5,
@@ -161,7 +161,7 @@ class OddSocketsConfig {
 /// with method chaining and sensible defaults.
 class OddSocketsConfigBuilder {
   String _apiKey = '';
-  String _managerUrl = 'https://manager1.oddsockets.tyga.network';
+  String _managerUrl = 'https://connect.oddsockets.tyga.network';
   String? _userId;
   bool _autoConnect = true;
   int _reconnectAttempts = 5;
@@ -220,7 +220,7 @@ class OddSocketsConfigBuilder {
 
   /// Sets common production configuration.
   OddSocketsConfigBuilder production() {
-    _managerUrl = 'https://manager1.oddsockets.tyga.network';
+    _managerUrl = 'https://connect.oddsockets.tyga.network';
     _timeout = const Duration(seconds: 10);
     _heartbeatInterval = const Duration(seconds: 30);
     return this;

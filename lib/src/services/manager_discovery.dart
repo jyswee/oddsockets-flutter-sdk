@@ -3,7 +3,7 @@
 /// Always connects to the main manager endpoint which handles
 /// all routing and load balancing transparently.
 class ManagerDiscovery {
-  static const String _managerUrl = 'https://manager1.oddsockets.tyga.network';
+  static const String _managerUrl = 'https://connect.oddsockets.tyga.network';
 
   /// Get the manager URL (always returns the main endpoint)
   /// 
