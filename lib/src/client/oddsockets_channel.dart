@@ -1,13 +1,4 @@
-import 'dart:async';
-import 'dart:convert';
-
-import 'package:rxdart/rxdart.dart';
-
-import '../models/message.dart';
-import '../models/types.dart';
-import '../exceptions/oddsockets_exception.dart';
-import '../services/message_size_validator.dart';
-import 'oddsockets_client.dart';
+part of 'oddsockets_client.dart';
 
 /// Represents a channel for publishing and subscribing to messages.
 ///
@@ -114,7 +105,7 @@ class OddSocketsChannel {
         );
       }
     } catch (error) {
-      _client._logger.e('Failed to subscribe to channel: $name', error);
+      _client._logger.e('Failed to subscribe to channel: $name', error: error);
       rethrow;
     }
   }
@@ -148,7 +139,7 @@ class OddSocketsChannel {
         );
       }
     } catch (error) {
-      _client._logger.e('Failed to unsubscribe from channel: $name', error);
+      _client._logger.e('Failed to unsubscribe from channel: $name', error: error);
       rethrow;
     }
   }
@@ -202,7 +193,7 @@ class OddSocketsChannel {
         );
       }
     } catch (error) {
-      _client._logger.e('Failed to publish to channel: $name', error);
+      _client._logger.e('Failed to publish to channel: $name', error: error);
       rethrow;
     }
   }
@@ -236,7 +227,7 @@ class OddSocketsChannel {
         );
       }
     } catch (error) {
-      _client._logger.e('Failed to get history for channel: $name', error);
+      _client._logger.e('Failed to get history for channel: $name', error: error);
       rethrow;
     }
   }
@@ -268,7 +259,7 @@ class OddSocketsChannel {
         );
       }
     } catch (error) {
-      _client._logger.e('Failed to get presence for channel: $name', error);
+      _client._logger.e('Failed to get presence for channel: $name', error: error);
       rethrow;
     }
   }
@@ -278,7 +269,7 @@ class OddSocketsChannel {
     try {
       await getPresence();
     } catch (error) {
-      _client._logger.w('Failed to request presence for channel: $name', error);
+      _client._logger.w('Failed to request presence for channel: $name', error: error);
       // Don't rethrow - presence is optional
     }
   }
@@ -297,7 +288,7 @@ class OddSocketsChannel {
         _messageHistory.removeRange(0, _messageHistory.length - Constants.maxMessageHistorySize);
       }
     } catch (error) {
-      _client._logger.w('Failed to request history for channel: $name', error);
+      _client._logger.w('Failed to request history for channel: $name', error: error);
       // Don't rethrow - history is optional
     }
   }

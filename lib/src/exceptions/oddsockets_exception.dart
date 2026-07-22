@@ -275,7 +275,7 @@ class OperationTimeoutException extends OddSocketsException {
   /// The timeout duration that was exceeded
   final Duration timeout;
 
-  const OperationTimeoutException({
+  OperationTimeoutException({
     required this.operation,
     required this.timeout,
     String? message,
