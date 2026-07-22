@@ -1,0 +1,113 @@
+# OddSockets Flutter SDK - live two-client round-trip PROOF
+#
+# Captured 2026-07-22T00:59:25Z against the LIVE OddSockets platform.
+# Built and run straight from the SDK sources via demo/Dockerfile:
+#
+#   docker build -f demo/Dockerfile -t oddsockets-flutter-demo .
+#   docker run --rm -e ODDSOCKETS_API_KEY=ak_your_key_here oddsockets-flutter-demo
+#
+# TWO independent clients (subscriber alice + publisher bob) on separate
+# connections. alice receiving bob's uniquely-nonced message can ONLY have
+# travelled through the OddSockets worker - it is not a local echo. API key
+# is redacted below; everything else is the verbatim run.
+#
+# Transport: genuine Socket.IO (Engine.IO v4) over WebSocket to the worker.
+# Runtime: flutter test (headless flutter_tester); no device/emulator needed.
+#
+# Process exit code: 0 (0 = cross-client round-trip verified)
+
+00:00 +0: loading /sdk/demo/test/demo_test.dart
+00:00 +0: two independent clients complete a cross-delivery round-trip
+[connect] connecting both clients...
+┌─────────────────────────────────────────────────
+│ 🐛 Connection state changed to: Connecting
+└─────────────────────────────────────────────────
+┌─────────────────────────────────────────────────
+│ 💡 Connecting to OddSockets...
+└─────────────────────────────────────────────────
+┌─────────────────────────────────────────────────
+│ 💡 Assigned to worker: https://worker1-2.oddsockets.tyga.network
+└─────────────────────────────────────────────────
+[alice] worker w002-oddsockets-1
+┌─────────────────────────────────────────────────
+│ 🐛 Connection state changed to: Connected
+└─────────────────────────────────────────────────
+┌─────────────────────────────────────────────────
+│ 💡 Connected to OddSockets successfully
+└─────────────────────────────────────────────────
+┌─────────────────────────────────────────────────
+│ 🐛 Connection state changed to: Connecting
+└─────────────────────────────────────────────────
+┌─────────────────────────────────────────────────
+│ 💡 Connecting to OddSockets...
+└─────────────────────────────────────────────────
+┌─────────────────────────────────────────────────
+│ 💡 Assigned to worker: https://worker1-2.oddsockets.tyga.network
+└─────────────────────────────────────────────────
+[bob]   worker w002-oddsockets-1
+┌─────────────────────────────────────────────────
+│ 🐛 Connection state changed to: Connected
+└─────────────────────────────────────────────────
+┌─────────────────────────────────────────────────
+│ 💡 Connected to OddSockets successfully
+└─────────────────────────────────────────────────
+[connect] alice = Connected, bob = Connected
+┌─────────────────────────────────────────────────
+│ 🐛 Retrieved presence for channel: demo-126109 (1 users)
+└─────────────────────────────────────────────────
+┌─────────────────────────────────────────────────
+│ 💡 Subscribed to channel: demo-126109
+└─────────────────────────────────────────────────
+[alice] subscribed to demo-126109 (presence on)
+[alice] received bob's message (nonce matched) - real round-trip.
+┌─────────────────────────────────────────────────
+│ 🐛 Published message to channel: demo-126109
+└─────────────────────────────────────────────────
+[bob] published, messageId = d6d5ac6e-8b12-44ac-8bcc-9fb197b8de32
+┌─────────────────────────────────────────────────
+│ 🐛 Retrieved presence for channel: demo-126109 (1 users)
+└─────────────────────────────────────────────────
+[alice] presence: 1 user(s).
+┌─────────────────────────────────────────────────
+│ 💡 Unsubscribed from channel: demo-126109
+└─────────────────────────────────────────────────
+[alice] unsubscribed.
+
+OK - cross-client round-trip verified
+┌─────────────────────────────────────────────────
+│ 💡 Disconnecting from OddSockets...
+└─────────────────────────────────────────────────
+┌─────────────────────────────────────────────────
+│ 🐛 Connection state changed to: Disconnected
+└─────────────────────────────────────────────────
+┌─────────────────────────────────────────────────
+│ 💡 Disconnected from OddSockets
+└─────────────────────────────────────────────────
+┌─────────────────────────────────────────────────
+│ 💡 Disconnecting from OddSockets...
+└─────────────────────────────────────────────────
+┌─────────────────────────────────────────────────
+│ 🐛 Connection state changed to: Disconnected
+└─────────────────────────────────────────────────
+┌─────────────────────────────────────────────────
+│ 💡 Disconnected from OddSockets
+└─────────────────────────────────────────────────
+┌─────────────────────────────────────────────────
+│ 💡 Disposing OddSockets client
+└─────────────────────────────────────────────────
+┌─────────────────────────────────────────────────
+│ 🐛 Disposed channel: demo-126109
+└─────────────────────────────────────────────────
+┌─────────────────────────────────────────────────
+│ 💡 OddSockets client disposed
+└─────────────────────────────────────────────────
+┌─────────────────────────────────────────────────
+│ 💡 Disposing OddSockets client
+└─────────────────────────────────────────────────
+┌─────────────────────────────────────────────────
+│ 🐛 Disposed channel: demo-126109
+└─────────────────────────────────────────────────
+┌─────────────────────────────────────────────────
+│ 💡 OddSockets client disposed
+└─────────────────────────────────────────────────
+00:17 +1: All tests passed!

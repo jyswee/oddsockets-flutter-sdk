@@ -69,7 +69,6 @@ library oddsockets_flutter;
 // Core client and configuration
 export 'src/config/oddsockets_config.dart';
 export 'src/client/oddsockets_client.dart';
-export 'src/client/oddsockets_channel.dart';
 
 // Models and types
 export 'src/models/message.dart';
@@ -81,10 +80,3 @@ export 'src/exceptions/oddsockets_exception.dart';
 // Services
 export 'src/services/manager_discovery.dart';
 export 'src/services/message_size_validator.dart';
-
-// BLoC integration (optional)
-export 'src/bloc/oddsockets_bloc.dart' show OddSocketsBloc, OddSocketsEvent, OddSocketsState;
-
-// Utilities
-export 'src/utils/connectivity_manager.dart';
-export 'src/utils/background_handler.dart';

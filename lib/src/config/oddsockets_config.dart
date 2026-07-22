@@ -64,7 +64,7 @@ class OddSocketsConfig {
       throw ArgumentError('Manager URL is required');
     }
 
-    if (!Uri.tryParse(managerUrl)?.hasAbsolutePath == true) {
+    if (Uri.tryParse(managerUrl)?.hasScheme != true) {
       throw ArgumentError('Invalid manager URL format');
     }
 

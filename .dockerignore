@@ -1,0 +1,8 @@
+.git
+.dart_tool
+build
+demo/.dart_tool
+demo/build
+**/*.iml
+.idea
+.vscode

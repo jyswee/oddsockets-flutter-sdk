@@ -1,9 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
-import 'dart:math';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/services.dart';
 import 'package:logger/logger.dart';
 import 'package:rxdart/rxdart.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
@@ -15,7 +14,8 @@ import '../models/types.dart';
 import '../exceptions/oddsockets_exception.dart';
 import '../services/manager_discovery.dart';
 import '../services/message_size_validator.dart';
-import 'oddsockets_channel.dart';
+
+part 'oddsockets_channel.dart';
 
 /// Type definition for message handlers
 typedef MessageHandler = void Function(Message message);
@@ -80,6 +80,12 @@ class OddSocketsClient {
   /// Connectivity subscription
   StreamSubscription<ConnectivityResult>? _connectivitySubscription;
 
+  /// Pending server responses, keyed by "responseEvent:channel".
+  final Map<String, Completer<Map<String, dynamic>>> _pending = {};
+
+  /// Completes once the Socket.IO handshake (Engine.IO OPEN + CONNECT ack) lands.
+  Completer<void>? _socketConnected;
+
   /// Creates a new OddSockets client.
   OddSocketsClient(this.config) {
     _initializeClient();
@@ -132,12 +138,39 @@ class OddSocketsClient {
       ),
     );
 
-    // Monitor connectivity changes
-    _connectivitySubscription = Connectivity().onConnectivityChanged.listen(_onConnectivityChanged);
+    // Monitor connectivity changes. The connectivity_plus plugin relies on a
+    // platform channel that is absent in headless/non-Flutter runtimes (flutter
+    // test, servers). Touching its EventChannel there throws "Binding has not
+    // yet been initialized" from the stream's lifecycle callbacks - an uncaught
+    // zone error that a try/catch around .listen cannot intercept. Gate the whole
+    // subscription on binding availability so the channel is never touched.
+    if (_flutterBindingAvailable) {
+      try {
+        _connectivitySubscription = Connectivity()
+            .onConnectivityChanged
+            .listen(_onConnectivityChanged, onError: (_) {});
+      } catch (_) {
+        // Connectivity monitoring unavailable - continue without it.
+      }
+    }
 
     // Auto-connect if configured
     if (config.autoConnect) {
       connect();
+    }
+  }
+
+  /// Whether a Flutter binding is initialized in the current runtime.
+  ///
+  /// Platform-channel plugins (connectivity_plus) require a binding; it is
+  /// absent under `flutter test` and on plain Dart servers. Reading
+  /// [ServicesBinding.instance] throws when no binding exists.
+  bool get _flutterBindingAvailable {
+    try {
+      ServicesBinding.instance;
+      return true;
+    } catch (_) {
+      return false;
     }
   }
 
@@ -182,7 +215,7 @@ class OddSocketsClient {
       });
 
     } catch (error, stackTrace) {
-      _logger.e('Connection failed', error, stackTrace);
+      _logger.e('Connection failed', error: error, stackTrace: stackTrace);
       _updateConnectionState(ConnectionState.failed);
 
       // Emit error event
@@ -212,6 +245,17 @@ class OddSocketsClient {
     // Close WebSocket
     await _webSocket?.sink.close();
     _webSocket = null;
+
+    // Fail any in-flight requests and reset handshake state.
+    for (final completer in _pending.values) {
+      if (!completer.isCompleted) {
+        completer.completeError(
+          const ConnectionException(message: 'Disconnected'),
+        );
+      }
+    }
+    _pending.clear();
+    _socketConnected = null;
 
     // Clear worker URL
     _workerUrl = null;
@@ -266,7 +310,7 @@ class OddSocketsClient {
         );
       }
     } catch (error) {
-      _logger.e('Bulk publish failed', error);
+      _logger.e('Bulk publish failed', error: error);
       
       // Return failed results for all messages
       return messages.map((message) => BulkResult(
@@ -276,44 +320,95 @@ class OddSocketsClient {
     }
   }
 
-  /// Sends a message through the WebSocket connection.
+  /// Maps a client operation to the Socket.IO event the worker replies with.
+  static const Map<String, String> _responseEventFor = {
+    'subscribe': 'subscribed',
+    'unsubscribe': 'unsubscribed',
+    'publish': 'published',
+    'get_presence': 'presence',
+    'get_history': 'history',
+  };
+
+  /// Emits a Socket.IO event to the worker and awaits its correlated reply.
+  ///
+  /// The worker speaks genuine Socket.IO: each operation emits an event and the
+  /// worker answers with a distinct response event (subscribe->subscribed,
+  /// publish->published, ...). We correlate on "responseEvent:channel".
   Future<Map<String, dynamic>> _sendMessage(Map<String, dynamic> message) async {
     if (_webSocket == null) {
       throw const ConnectionException(message: 'WebSocket not connected');
     }
 
-    final completer = Completer<Map<String, dynamic>>();
-    final messageId = OddSocketsUtils.generateMessageId();
-    
-    message['id'] = messageId;
+    final type = message['type'] as String;
+    final responseEvent = _responseEventFor[type];
+    if (responseEvent == null) {
+      throw MessageDeliveryException(message: 'Unsupported operation: $type');
+    }
 
-    // Set up response handler (simplified for this implementation)
+    final channelName = message['channel'] as String?;
+    final payload = _buildEventPayload(type, message);
+    final key = '$responseEvent:${channelName ?? ''}';
+
+    final completer = Completer<Map<String, dynamic>>();
+    _pending[key] = completer;
+
     Timer(config.timeout, () {
       if (!completer.isCompleted) {
+        _pending.remove(key);
         completer.completeError(OperationTimeoutException(
-          operation: 'send_message',
+          operation: type,
           timeout: config.timeout,
         ));
       }
     });
 
     try {
-      _webSocket!.sink.add(jsonEncode(message));
-      
-      // For this implementation, we'll simulate a successful response
-      // In a real implementation, you'd wait for the actual response
-      completer.complete({
-        'success': true,
-        'messageId': messageId,
-        'timestamp': DateTime.now().toIso8601String(),
-      });
+      // Socket.IO EVENT packet: "42" + ["event", payload]
+      _webSocket!.sink.add('42${jsonEncode([type, payload])}');
     } catch (error) {
+      _pending.remove(key);
       if (!completer.isCompleted) {
         completer.completeError(error);
       }
     }
 
     return completer.future;
+  }
+
+  /// Builds the worker-shaped payload for an operation, omitting null-valued
+  /// keys. The worker destructures `options = {}` (only defaults on undefined,
+  /// not JSON null), so sending null options crashes it - prune nulls instead.
+  Map<String, dynamic> _buildEventPayload(String type, Map<String, dynamic> message) {
+    final payload = <String, dynamic>{};
+    if (message['channel'] != null) {
+      payload['channel'] = message['channel'];
+    }
+
+    switch (type) {
+      case 'publish':
+        payload['message'] = message['message'];
+        final opts = message['options'];
+        if (opts is Map && opts.isNotEmpty) {
+          payload['options'] = _pruneNulls(Map<String, dynamic>.from(opts));
+        }
+        break;
+      case 'subscribe':
+      case 'get_history':
+        final opts = message['options'];
+        if (opts is Map && opts.isNotEmpty) {
+          payload['options'] = _pruneNulls(Map<String, dynamic>.from(opts));
+        }
+        break;
+      case 'get_presence':
+      case 'unsubscribe':
+        break;
+    }
+    return payload;
+  }
+
+  Map<String, dynamic> _pruneNulls(Map<String, dynamic> map) {
+    map.removeWhere((key, value) => value == null);
+    return map;
   }
 
   /// Assigns a worker for this client.
@@ -379,33 +474,39 @@ class OddSocketsClient {
     }
   }
 
-  /// Connects to the WebSocket.
+  /// Connects to the worker over genuine Socket.IO (Engine.IO v4).
   Future<void> _connectWebSocket() async {
     if (_workerUrl == null) {
       throw const WorkerAssignmentException(message: 'No worker URL available');
     }
 
     try {
-      final wsUrl = _workerUrl!.replaceFirst('http', 'ws') + '/ws';
-      _webSocket = WebSocketChannel.connect(
-        Uri.parse(wsUrl),
-        protocols: ['oddsockets-v1'],
-      );
+      // Engine.IO v4 endpoint. Normalise the scheme to ws/wss.
+      var base = _workerUrl!;
+      if (base.startsWith('https')) {
+        base = 'wss${base.substring(5)}';
+      } else if (base.startsWith('http')) {
+        base = 'ws${base.substring(4)}';
+      }
+      final wsUrl = '$base/socket.io/?EIO=4&transport=websocket';
 
-      // Listen for messages
+      _socketConnected = Completer<void>();
+      _webSocket = WebSocketChannel.connect(Uri.parse(wsUrl));
+
+      // Listen for Engine.IO frames.
       _webSocket!.stream.listen(
-        _onWebSocketMessage,
+        _onEngineFrame,
         onError: _onWebSocketError,
         onDone: _onWebSocketClosed,
       );
 
-      // Send authentication
-      _webSocket!.sink.add(jsonEncode({
-        'type': 'auth',
-        'apiKey': config.apiKey,
-        'userId': config.userId,
-      }));
-
+      // Block until the Socket.IO CONNECT ack arrives (auth accepted).
+      await _socketConnected!.future.timeout(
+        config.timeout,
+        onTimeout: () => throw const ConnectionException(
+          message: 'Socket.IO handshake timed out',
+        ),
+      );
     } catch (error) {
       throw ConnectionException(
         message: 'WebSocket connection failed: $error',
@@ -414,30 +515,183 @@ class OddSocketsClient {
     }
   }
 
-  /// Handles incoming WebSocket messages.
-  void _onWebSocketMessage(dynamic data) {
-    try {
-      final message = jsonDecode(data as String) as Map<String, dynamic>;
-      
-      switch (message['type']) {
-        case 'message':
-          _handleIncomingMessage(message);
-          break;
-        case 'presence':
-          _handlePresenceUpdate(message);
-          break;
-        case 'error':
-          _handleError(message);
-          break;
-        case 'pong':
-          // Heartbeat response - no action needed
-          break;
-        default:
-          _logger.w('Unknown message type: ${message['type']}');
-      }
-    } catch (error) {
-      _logger.e('Failed to process WebSocket message', error);
+  /// Handles a raw Engine.IO frame. Frame types: 0=OPEN, 2=PING, 3=PONG,
+  /// 4=MESSAGE (carries a Socket.IO packet).
+  void _onEngineFrame(dynamic raw) {
+    final frame = raw is String ? raw : raw.toString();
+    if (frame.isEmpty) return;
+
+    final type = frame[0];
+    final rest = frame.substring(1);
+
+    switch (type) {
+      case '0': // Engine.IO OPEN -> send Socket.IO CONNECT with auth payload.
+        _webSocket!.sink.add(
+          '40${jsonEncode({'apiKey': config.apiKey, 'userId': config.userId})}',
+        );
+        break;
+      case '2': // Engine.IO PING -> PONG.
+        _webSocket!.sink.add('3');
+        break;
+      case '3': // Engine.IO PONG - no action.
+        break;
+      case '4': // Engine.IO MESSAGE -> Socket.IO packet.
+        _onSocketIoPacket(rest);
+        break;
+      default:
+        break;
     }
+  }
+
+  /// Handles a Socket.IO packet. Packet types: 0=CONNECT, 1=DISCONNECT,
+  /// 2=EVENT, 4=CONNECT_ERROR.
+  void _onSocketIoPacket(String packet) {
+    if (packet.isEmpty) return;
+
+    final type = packet[0];
+    final body = packet.substring(1);
+
+    switch (type) {
+      case '0': // CONNECT ack (auth accepted) - handshake complete.
+        if (_socketConnected != null && !_socketConnected!.isCompleted) {
+          _socketConnected!.complete();
+        }
+        break;
+      case '2': // EVENT.
+        _dispatchSocketIoEvent(body);
+        break;
+      case '4': // CONNECT_ERROR.
+        if (_socketConnected != null && !_socketConnected!.isCompleted) {
+          _socketConnected!.completeError(
+            ConnectionException(message: 'Socket.IO connect error: $body'),
+          );
+        }
+        break;
+      default:
+        break;
+    }
+  }
+
+  /// Parses a Socket.IO EVENT body ["event", payload] and dispatches it.
+  void _dispatchSocketIoEvent(String body) {
+    try {
+      final decoded = jsonDecode(body);
+      if (decoded is! List || decoded.isEmpty) return;
+
+      final event = decoded[0] as String;
+      final payload = decoded.length > 1 ? decoded[1] : null;
+      _handleServerEvent(
+        event,
+        payload is Map ? Map<String, dynamic>.from(payload) : <String, dynamic>{},
+      );
+    } catch (error) {
+      _logger.e('Failed to parse Socket.IO event', error: error);
+    }
+  }
+
+  /// Routes a decoded server event to either a pending request or a live push.
+  void _handleServerEvent(String event, Map<String, dynamic> payload) {
+    final channelName = payload['channel'] as String?;
+
+    switch (event) {
+      case 'message':
+        _handleIncomingMessage(_adaptMessage(payload));
+        return;
+      case 'error':
+        // Worker errors don't carry a channel; fail the oldest pending request.
+        final pending = _takeAnyPending();
+        final reason = (payload['message'] ?? payload['type'] ?? 'Unknown error')
+            .toString();
+        if (pending != null) {
+          pending.completeError(MessageDeliveryException(message: reason));
+        } else {
+          _handleError(payload);
+        }
+        return;
+    }
+
+    // Response events correlate on "responseEvent:channel".
+    final key = '$event:${channelName ?? ''}';
+    final completer = _pending.remove(key);
+    if (completer != null && !completer.isCompleted) {
+      completer.complete(_adaptResponse(event, payload));
+    } else if (event == 'presence') {
+      // Unsolicited presence push.
+      _handlePresenceUpdate(_adaptPresence(payload));
+    }
+  }
+
+  /// Removes and returns any single pending request (used for channel-less errors).
+  Completer<Map<String, dynamic>>? _takeAnyPending() {
+    if (_pending.isEmpty) return null;
+    final key = _pending.keys.first;
+    return _pending.remove(key);
+  }
+
+  /// Adapts a worker response event to the {success, ...} shape the channel expects.
+  Map<String, dynamic> _adaptResponse(String event, Map<String, dynamic> p) {
+    switch (event) {
+      case 'subscribed':
+      case 'unsubscribed':
+        return {'success': true};
+      case 'published':
+        return {
+          'success': true,
+          'messageId': p['messageId'],
+          'timestamp': p['timestamp'],
+        };
+      case 'presence':
+        return {'success': true, 'presence': _adaptPresence(p)};
+      case 'history':
+        final messages = (p['messages'] as List? ?? [])
+            .map((m) => _adaptMessage(Map<String, dynamic>.from(m as Map)))
+            .toList();
+        return {'success': true, 'messages': messages};
+      default:
+        return {'success': true, ...p};
+    }
+  }
+
+  /// Adapts the worker presence payload {channel, occupancy, occupants} to the
+  /// PresenceInfo JSON shape {channel, users, count, timestamp}.
+  Map<String, dynamic> _adaptPresence(Map<String, dynamic> p) {
+    final occupants = (p['occupants'] as List? ?? []);
+    final users = occupants.map((o) {
+      if (o is Map && o['userId'] != null) return o['userId'].toString();
+      return o.toString();
+    }).toList();
+    return {
+      'channel': p['channel'],
+      'users': users,
+      'count': p['occupancy'] ?? users.length,
+      'timestamp': DateTime.now().toIso8601String(),
+    };
+  }
+
+  /// Adapts the worker message envelope to the Message JSON shape.
+  Map<String, dynamic> _adaptMessage(Map<String, dynamic> p) {
+    final publisher = p['publisher'];
+    final userId = publisher is Map ? publisher['userId']?.toString() : null;
+
+    final ts = p['timestamp'];
+    final String timestamp;
+    if (ts is int) {
+      timestamp = DateTime.fromMillisecondsSinceEpoch(ts).toIso8601String();
+    } else if (ts is String) {
+      timestamp = ts;
+    } else {
+      timestamp = DateTime.now().toIso8601String();
+    }
+
+    return {
+      'id': p['id'] ?? OddSocketsUtils.generateMessageId(),
+      'channel': p['channel'],
+      'data': p['message'],
+      'timestamp': timestamp,
+      'userId': userId,
+      'metadata':
+          p['metadata'] is Map ? Map<String, dynamic>.from(p['metadata']) : null,
+    };
   }
 
   /// Handles incoming messages.
@@ -450,7 +704,7 @@ class OddSocketsClient {
       final channel = _channels[message.channel];
       channel?._handleMessage(message);
     } catch (error) {
-      _logger.e('Failed to handle incoming message', error);
+      _logger.e('Failed to handle incoming message', error: error);
     }
   }
 
@@ -470,7 +724,7 @@ class OddSocketsClient {
         'timestamp': DateTime.now().toIso8601String(),
       });
     } catch (error) {
-      _logger.e('Failed to handle presence update', error);
+      _logger.e('Failed to handle presence update', error: error);
     }
   }
 
@@ -503,7 +757,7 @@ class OddSocketsClient {
 
   /// Handles WebSocket errors.
   void _onWebSocketError(error) {
-    _logger.e('WebSocket error', error);
+    _logger.e('WebSocket error', error: error);
     
     final exception = WebSocketException(
       message: 'WebSocket error: $error',
@@ -543,17 +797,10 @@ class OddSocketsClient {
     }
   }
 
-  /// Starts the heartbeat timer.
+  /// Heartbeat is server-driven under Engine.IO: the worker sends PING ('2')
+  /// and we reply PONG ('3') in [_onEngineFrame]. No client-side timer needed.
   void _startHeartbeat() {
     _heartbeatTimer?.cancel();
-    _heartbeatTimer = Timer.periodic(config.heartbeatInterval, (_) {
-      if (isConnected && _webSocket != null) {
-        _webSocket!.sink.add(jsonEncode({
-          'type': 'ping',
-          'timestamp': DateTime.now().toIso8601String(),
-        }));
-      }
-    });
   }
 
   /// Handles connectivity changes.
@@ -606,7 +853,7 @@ class OddSocketsClient {
           'timestamp': DateTime.now().toIso8601String(),
         });
       } catch (error) {
-        _logger.e('Reconnection attempt $_reconnectAttempts failed', error);
+        _logger.e('Reconnection attempt $_reconnectAttempts failed', error: error);
         
         if (_reconnectAttempts >= config.reconnectAttempts) {
           _logger.e('Maximum reconnection attempts reached');
@@ -689,8 +936,14 @@ class OddSocketsClient {
       await disconnect();
     }
 
-    // Cancel subscriptions and timers
-    _connectivitySubscription?.cancel();
+    // Cancel subscriptions and timers. Cancelling the connectivity stream can
+    // touch the platform channel, which is absent in headless runtimes; guard it.
+    try {
+      await _connectivitySubscription?.cancel();
+    } catch (_) {
+      // Connectivity teardown unavailable - ignore.
+    }
+    _connectivitySubscription = null;
     _reconnectTimer?.cancel();
     _heartbeatTimer?.cancel();
 
