@@ -9,6 +9,7 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 
 import '../config/oddsockets_config.dart';
+import '../enhanced_features.dart';
 import '../models/message.dart';
 import '../models/types.dart';
 import '../exceptions/oddsockets_exception.dart';
@@ -86,9 +87,76 @@ class OddSocketsClient {
   /// Completes once the Socket.IO handshake (Engine.IO OPEN + CONNECT ack) lands.
   Completer<void>? _socketConnected;
 
+  /// Persistent listeners for raw Socket.IO events, keyed by event name.
+  final Map<String, List<Function>> _listeners = {};
+
+  /// One-shot listeners, cleared after their first dispatch.
+  final Map<String, List<Function>> _onceListeners = {};
+
+  /// Slack-like enhanced features (reactions, typing, threads, DMs, presence,
+  /// notifications, search) over the same live Socket.IO connection.
+  late final EnhancedFeatures enhanced;
+
   /// Creates a new OddSockets client.
   OddSocketsClient(this.config) {
+    enhanced = EnhancedFeatures(this);
     _initializeClient();
+  }
+
+  /// Emits a raw Socket.IO event to the worker (fire-and-forget).
+  ///
+  /// Used by [enhanced] for the Slack-like action surface. Null-valued keys are
+  /// pruned because the worker destructures option objects and treats JSON null
+  /// differently from an absent key.
+  void emit(String event, Map<String, dynamic> payload) {
+    if (_webSocket == null) return;
+    final pruned = _pruneNulls(Map<String, dynamic>.from(payload));
+    _webSocket!.sink.add('42${jsonEncode([event, pruned])}');
+  }
+
+  /// Registers a persistent listener for a raw Socket.IO event.
+  void on(String event, Function handler) {
+    _listeners.putIfAbsent(event, () => []).add(handler);
+  }
+
+  /// Registers a one-shot listener, removed after it fires once.
+  void once(String event, Function handler) {
+    _onceListeners.putIfAbsent(event, () => []).add(handler);
+  }
+
+  /// Removes a previously registered listener (or all listeners for an event).
+  void off(String event, [Function? handler]) {
+    if (handler == null) {
+      _listeners.remove(event);
+      _onceListeners.remove(event);
+      return;
+    }
+    _listeners[event]?.remove(handler);
+    _onceListeners[event]?.remove(handler);
+  }
+
+  /// Dispatches a decoded event to any registered on()/once() listeners.
+  void _dispatchListeners(String event, dynamic payload) {
+    final persistent = _listeners[event];
+    if (persistent != null) {
+      for (final handler in List<Function>.of(persistent)) {
+        _invokeListener(handler, payload);
+      }
+    }
+    final onceList = _onceListeners.remove(event);
+    if (onceList != null) {
+      for (final handler in onceList) {
+        _invokeListener(handler, payload);
+      }
+    }
+  }
+
+  void _invokeListener(Function handler, dynamic payload) {
+    try {
+      handler(payload);
+    } catch (error) {
+      _logger.e('Listener for event threw', error: error);
+    }
   }
 
   /// Current connection state
@@ -592,6 +660,11 @@ class OddSocketsClient {
   /// Routes a decoded server event to either a pending request or a live push.
   void _handleServerEvent(String event, Map<String, dynamic> payload) {
     final channelName = payload['channel'] as String?;
+
+    // Fan out to raw event listeners first. This carries the Slack-like
+    // enhanced broadcasts (reaction_added, user_typing, thread_reply, ...) and
+    // the request/response events the enhanced helpers await via once().
+    _dispatchListeners(event, payload);
 
     switch (event) {
       case 'message':
