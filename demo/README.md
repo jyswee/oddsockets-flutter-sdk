@@ -138,4 +138,8 @@ await publisher.disconnect();
 - `Dockerfile` - builds the SDK from source and runs the two-client demo on `ghcr.io/cirruslabs/flutter:stable`.
 - `PROOF.txt` - captured transcript of a real containerised run against the platform.
 - `test/demo_test.dart` - the two-client round-trip program (a `flutter test`).
+- `test/enhanced_test.dart` - two-client enhanced-events regression: bob fires
+  `enhanced.startTyping` + `enhanced.addReaction`, alice receives them on her
+  public `client.on('user_typing')` / `client.on('reaction_added')` surface -
+  provably through the worker (Slack-like events, real receive-path).
 - `pubspec.yaml` - resolves the SDK via a local path dependency (`path: ../`).

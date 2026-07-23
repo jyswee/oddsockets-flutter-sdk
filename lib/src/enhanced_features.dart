@@ -20,7 +20,7 @@ class EnhancedFeatures {
     required String userName,
   }) async {
     if (!_client.isConnected) {
-      throw OddSocketsException('Not connected to OddSockets');
+      throw const ConnectionException(message: 'Not connected to OddSockets');
     }
 
     final completer = Completer<Map<String, dynamic>>();
@@ -34,7 +34,7 @@ class EnhancedFeatures {
     void errorHandler(dynamic data) {
       if (data is Map<String, dynamic> && data['event'] == 'thread_reply') {
         completer.completeError(
-          OddSocketsException(data['message']?.toString() ?? 'Unknown error')
+          MessageDeliveryException(message: data['message']?.toString() ?? 'Unknown error')
         );
       }
     }
@@ -55,7 +55,7 @@ class EnhancedFeatures {
 
   Future<Map<String, dynamic>> getThread(String threadId) async {
     if (!_client.isConnected) {
-      throw OddSocketsException('Not connected to OddSockets');
+      throw const ConnectionException(message: 'Not connected to OddSockets');
     }
 
     final completer = Completer<Map<String, dynamic>>();
@@ -69,7 +69,7 @@ class EnhancedFeatures {
     void errorHandler(dynamic data) {
       if (data is Map<String, dynamic> && data['event'] == 'get_thread') {
         completer.completeError(
-          OddSocketsException(data['message']?.toString() ?? 'Unknown error')
+          MessageDeliveryException(message: data['message']?.toString() ?? 'Unknown error')
         );
       }
     }
@@ -83,7 +83,7 @@ class EnhancedFeatures {
 
   Future<Map<String, dynamic>> subscribeThread(String threadId, String userId) async {
     if (!_client.isConnected) {
-      throw OddSocketsException('Not connected to OddSockets');
+      throw const ConnectionException(message: 'Not connected to OddSockets');
     }
 
     final completer = Completer<Map<String, dynamic>>();
@@ -97,7 +97,7 @@ class EnhancedFeatures {
     void errorHandler(dynamic data) {
       if (data is Map<String, dynamic> && data['event'] == 'subscribe_thread') {
         completer.completeError(
-          OddSocketsException(data['message']?.toString() ?? 'Unknown error')
+          MessageDeliveryException(message: data['message']?.toString() ?? 'Unknown error')
         );
       }
     }
@@ -160,7 +160,7 @@ class EnhancedFeatures {
 
   Future<Map<String, dynamic>> getReactions(String messageId) async {
     if (!_client.isConnected) {
-      throw OddSocketsException('Not connected to OddSockets');
+      throw const ConnectionException(message: 'Not connected to OddSockets');
     }
 
     final completer = Completer<Map<String, dynamic>>();
@@ -174,7 +174,7 @@ class EnhancedFeatures {
     void errorHandler(dynamic data) {
       if (data is Map<String, dynamic> && data['event'] == 'get_reactions') {
         completer.completeError(
-          OddSocketsException(data['message']?.toString() ?? 'Unknown error')
+          MessageDeliveryException(message: data['message']?.toString() ?? 'Unknown error')
         );
       }
     }
@@ -205,7 +205,7 @@ class EnhancedFeatures {
 
   Future<Map<String, dynamic>> getUnreadCounts(String userId, List<String> channels) async {
     if (!_client.isConnected) {
-      throw OddSocketsException('Not connected to OddSockets');
+      throw const ConnectionException(message: 'Not connected to OddSockets');
     }
 
     final completer = Completer<Map<String, dynamic>>();
@@ -219,7 +219,7 @@ class EnhancedFeatures {
     void errorHandler(dynamic data) {
       if (data is Map<String, dynamic> && data['event'] == 'get_unread_counts') {
         completer.completeError(
-          OddSocketsException(data['message']?.toString() ?? 'Unknown error')
+          MessageDeliveryException(message: data['message']?.toString() ?? 'Unknown error')
         );
       }
     }
@@ -247,7 +247,7 @@ class EnhancedFeatures {
     required String createdByName,
   }) async {
     if (!_client.isConnected) {
-      throw OddSocketsException('Not connected to OddSockets');
+      throw const ConnectionException(message: 'Not connected to OddSockets');
     }
 
     final completer = Completer<Map<String, dynamic>>();
@@ -261,7 +261,7 @@ class EnhancedFeatures {
     void errorHandler(dynamic data) {
       if (data is Map<String, dynamic> && data['event'] == 'create_channel') {
         completer.completeError(
-          OddSocketsException(data['message']?.toString() ?? 'Unknown error')
+          MessageDeliveryException(message: data['message']?.toString() ?? 'Unknown error')
         );
       }
     }
@@ -335,7 +335,7 @@ class EnhancedFeatures {
 
   Future<Map<String, dynamic>> getChannelMembers(String channelId) async {
     if (!_client.isConnected) {
-      throw OddSocketsException('Not connected to OddSockets');
+      throw const ConnectionException(message: 'Not connected to OddSockets');
     }
 
     final completer = Completer<Map<String, dynamic>>();
@@ -349,7 +349,7 @@ class EnhancedFeatures {
     void errorHandler(dynamic data) {
       if (data is Map<String, dynamic> && data['event'] == 'get_channel_members') {
         completer.completeError(
-          OddSocketsException(data['message']?.toString() ?? 'Unknown error')
+          MessageDeliveryException(message: data['message']?.toString() ?? 'Unknown error')
         );
       }
     }
@@ -365,7 +365,7 @@ class EnhancedFeatures {
 
   Future<Map<String, dynamic>> createDM(List<String> userIds, String type) async {
     if (!_client.isConnected) {
-      throw OddSocketsException('Not connected to OddSockets');
+      throw const ConnectionException(message: 'Not connected to OddSockets');
     }
 
     final completer = Completer<Map<String, dynamic>>();
@@ -379,7 +379,7 @@ class EnhancedFeatures {
     void errorHandler(dynamic data) {
       if (data is Map<String, dynamic> && data['event'] == 'create_dm') {
         completer.completeError(
-          OddSocketsException(data['message']?.toString() ?? 'Unknown error')
+          MessageDeliveryException(message: data['message']?.toString() ?? 'Unknown error')
         );
       }
     }
@@ -408,7 +408,7 @@ class EnhancedFeatures {
 
   Future<Map<String, dynamic>> getDMConversations(String userId, bool includeArchived) async {
     if (!_client.isConnected) {
-      throw OddSocketsException('Not connected to OddSockets');
+      throw const ConnectionException(message: 'Not connected to OddSockets');
     }
 
     final completer = Completer<Map<String, dynamic>>();
@@ -422,7 +422,7 @@ class EnhancedFeatures {
     void errorHandler(dynamic data) {
       if (data is Map<String, dynamic> && data['event'] == 'get_dm_conversations') {
         completer.completeError(
-          OddSocketsException(data['message']?.toString() ?? 'Unknown error')
+          MessageDeliveryException(message: data['message']?.toString() ?? 'Unknown error')
         );
       }
     }
@@ -464,7 +464,7 @@ class EnhancedFeatures {
 
   Future<Map<String, dynamic>> getNotifications(String userId, int limit, [String? status]) async {
     if (!_client.isConnected) {
-      throw OddSocketsException('Not connected to OddSockets');
+      throw const ConnectionException(message: 'Not connected to OddSockets');
     }
 
     final completer = Completer<Map<String, dynamic>>();
@@ -478,7 +478,7 @@ class EnhancedFeatures {
     void errorHandler(dynamic data) {
       if (data is Map<String, dynamic> && data['event'] == 'get_notifications') {
         completer.completeError(
-          OddSocketsException(data['message']?.toString() ?? 'Unknown error')
+          MessageDeliveryException(message: data['message']?.toString() ?? 'Unknown error')
         );
       }
     }
@@ -537,7 +537,7 @@ class EnhancedFeatures {
 
   Future<Map<String, dynamic>> getUserPresence(List<String> userIds) async {
     if (!_client.isConnected) {
-      throw OddSocketsException('Not connected to OddSockets');
+      throw const ConnectionException(message: 'Not connected to OddSockets');
     }
 
     final completer = Completer<Map<String, dynamic>>();
@@ -551,7 +551,7 @@ class EnhancedFeatures {
     void errorHandler(dynamic data) {
       if (data is Map<String, dynamic> && data['event'] == 'get_user_presence') {
         completer.completeError(
-          OddSocketsException(data['message']?.toString() ?? 'Unknown error')
+          MessageDeliveryException(message: data['message']?.toString() ?? 'Unknown error')
         );
       }
     }
@@ -604,7 +604,7 @@ class EnhancedFeatures {
 
   Future<Map<String, dynamic>> getPinnedMessages(String channel) async {
     if (!_client.isConnected) {
-      throw OddSocketsException('Not connected to OddSockets');
+      throw const ConnectionException(message: 'Not connected to OddSockets');
     }
 
     final completer = Completer<Map<String, dynamic>>();
@@ -618,7 +618,7 @@ class EnhancedFeatures {
     void errorHandler(dynamic data) {
       if (data is Map<String, dynamic> && data['event'] == 'get_pinned_messages') {
         completer.completeError(
-          OddSocketsException(data['message']?.toString() ?? 'Unknown error')
+          MessageDeliveryException(message: data['message']?.toString() ?? 'Unknown error')
         );
       }
     }
@@ -634,7 +634,7 @@ class EnhancedFeatures {
 
   Future<Map<String, dynamic>> searchMessages(String query, String userId, int limit) async {
     if (!_client.isConnected) {
-      throw OddSocketsException('Not connected to OddSockets');
+      throw const ConnectionException(message: 'Not connected to OddSockets');
     }
 
     final completer = Completer<Map<String, dynamic>>();
@@ -648,7 +648,7 @@ class EnhancedFeatures {
     void errorHandler(dynamic data) {
       if (data is Map<String, dynamic> && data['event'] == 'search_messages') {
         completer.completeError(
-          OddSocketsException(data['message']?.toString() ?? 'Unknown error')
+          MessageDeliveryException(message: data['message']?.toString() ?? 'Unknown error')
         );
       }
     }
@@ -666,7 +666,7 @@ class EnhancedFeatures {
 
   Future<Map<String, dynamic>> filterMessages(Map<String, dynamic> filters) async {
     if (!_client.isConnected) {
-      throw OddSocketsException('Not connected to OddSockets');
+      throw const ConnectionException(message: 'Not connected to OddSockets');
     }
 
     final completer = Completer<Map<String, dynamic>>();
@@ -680,7 +680,7 @@ class EnhancedFeatures {
     void errorHandler(dynamic data) {
       if (data is Map<String, dynamic> && data['event'] == 'filter_messages') {
         completer.completeError(
-          OddSocketsException(data['message']?.toString() ?? 'Unknown error')
+          MessageDeliveryException(message: data['message']?.toString() ?? 'Unknown error')
         );
       }
     }
@@ -694,7 +694,7 @@ class EnhancedFeatures {
 
   Future<Map<String, dynamic>> searchInChannel(String channel, String query, int limit) async {
     if (!_client.isConnected) {
-      throw OddSocketsException('Not connected to OddSockets');
+      throw const ConnectionException(message: 'Not connected to OddSockets');
     }
 
     final completer = Completer<Map<String, dynamic>>();
@@ -708,7 +708,7 @@ class EnhancedFeatures {
     void errorHandler(dynamic data) {
       if (data is Map<String, dynamic> && data['event'] == 'search_in_channel') {
         completer.completeError(
-          OddSocketsException(data['message']?.toString() ?? 'Unknown error')
+          MessageDeliveryException(message: data['message']?.toString() ?? 'Unknown error')
         );
       }
     }
@@ -726,7 +726,7 @@ class EnhancedFeatures {
 
   Future<Map<String, dynamic>> searchByUser(String userId, [String? query, int limit = 10]) async {
     if (!_client.isConnected) {
-      throw OddSocketsException('Not connected to OddSockets');
+      throw const ConnectionException(message: 'Not connected to OddSockets');
     }
 
     final completer = Completer<Map<String, dynamic>>();
@@ -740,7 +740,7 @@ class EnhancedFeatures {
     void errorHandler(dynamic data) {
       if (data is Map<String, dynamic> && data['event'] == 'search_by_user') {
         completer.completeError(
-          OddSocketsException(data['message']?.toString() ?? 'Unknown error')
+          MessageDeliveryException(message: data['message']?.toString() ?? 'Unknown error')
         );
       }
     }

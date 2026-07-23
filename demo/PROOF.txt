@@ -111,3 +111,32 @@ OK - cross-client round-trip verified
 │ 💡 OddSockets client disposed
 └─────────────────────────────────────────────────
 00:17 +1: All tests passed!
+
+
+# ---- Enhanced-events two-client receive-path ------------------------------
+# Captured 2026-07-23 against the LIVE OddSockets platform (worker
+# w002-oddsockets-1). Same demo image; test/enhanced_test.dart.
+#
+#   docker build -f demo/Dockerfile -t oddsockets-flutter-demo .
+#   docker run --rm -e ODDSOCKETS_API_KEY=ak_your_key_here oddsockets-flutter-demo
+#
+# TWO independent clients (subscriber alice + publisher bob) on separate
+# connections, both in the same channel room. bob fires enhanced (Slack-like)
+# actions - enhanced.startTyping and enhanced.addReaction. Because alice is on a
+# SEPARATE connection, the broadcasts reaching alice's public event stream
+# (client.on('user_typing') / client.on('reaction_added')) can only have
+# travelled through the worker. Process exit code: 0.
+
+[connect] connecting both clients...
+[alice] worker w002-oddsockets-1
+[bob]   worker w002-oddsockets-1
+[connect] alice = Connected, bob = Connected
+[both] subscribed to enh-536143
+[bob] enhanced.startTyping(bob) ...
+[bob] published messageId=813afacb-d5d4-417c-a9f8-01f97f28df58, enhanced.addReaction :thumbsup: ...
+[alice] received 'user_typing' from bob (channel enh-536143) - broadcast round-trip.
+[alice] received 'reaction_added' (:thumbsup:) from bob - broadcast round-trip.
+
+OK - enhanced broadcast receive-path verified (user_typing + reaction_added)
+
+00:03 +2: All tests passed!
