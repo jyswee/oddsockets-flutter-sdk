@@ -683,6 +683,15 @@ class OddSocketsClient {
         return;
     }
 
+    // The worker emits 'history' both as the explicit get_history RESPONSE
+    // (query:true) and as a fire-and-forget on-join snapshot (~10 msgs, no query
+    // flag). Only the query:true response may complete a pending getHistory
+    // waiter; ignore the snapshot here so it can't resolve getHistory with the
+    // wrong data. BUG-2026-0727-0012.
+    if (event == 'history' && payload['query'] != true) {
+      return;
+    }
+
     // Response events correlate on "responseEvent:channel".
     final key = '$event:${channelName ?? ''}';
     final completer = _pending.remove(key);
