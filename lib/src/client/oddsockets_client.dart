@@ -350,6 +350,11 @@ class OddSocketsClient {
   }
 
   /// Publishes multiple messages in bulk.
+  ///
+  /// Per-message rejections come back in the returned results. An
+  /// operation-level failure - auth rejected, connection dropped, the worker
+  /// refusing the batch - is thrown instead, because reporting it as N failed
+  /// messages makes it indistinguishable from N individually rejected messages.
   Future<List<BulkResult>> publishBulk(List<BulkMessage> messages) async {
     if (!isConnected) {
       throw const ConnectionException(message: 'Not connected to OddSockets');
@@ -359,33 +364,31 @@ class OddSocketsClient {
       return [];
     }
 
-    try {
-      final payload = {
-        'type': 'bulk_publish',
-        'messages': messages.map((m) => m.toJson()).toList(),
-        'timestamp': DateTime.now().toIso8601String(),
-      };
+    final payload = {
+      'type': 'bulk_publish',
+      'messages': messages.map((m) => m.toJson()).toList(),
+      'timestamp': DateTime.now().toIso8601String(),
+    };
 
-      final response = await _sendMessage(payload);
-      
-      if (response['success'] == true && response['results'] is List) {
-        return (response['results'] as List)
-            .map((result) => BulkResult.fromJson(result as Map<String, dynamic>))
-            .toList();
-      } else {
-        throw MessageDeliveryException(
-          message: 'Bulk publish failed: ${response['error'] ?? 'Unknown error'}',
-        );
-      }
+    final Map<String, dynamic> response;
+    try {
+      response = await _sendMessage(payload);
     } catch (error) {
       _logger.e('Bulk publish failed', error: error);
-      
-      // Return failed results for all messages
-      return messages.map((message) => BulkResult(
-        success: false,
-        error: error.toString(),
-      )).toList();
+      rethrow;
     }
+
+    if (response['success'] == true && response['results'] is List) {
+      return (response['results'] as List)
+          .map((result) => BulkResult.fromJson(result as Map<String, dynamic>))
+          .toList();
+    }
+
+    final failure = MessageDeliveryException(
+      message: 'Bulk publish failed: ${response['error'] ?? 'Unknown error'}',
+    );
+    _logger.e('Bulk publish failed', error: failure);
+    throw failure;
   }
 
   /// Maps a client operation to the Socket.IO event the worker replies with.
@@ -481,10 +484,12 @@ class OddSocketsClient {
 
   /// Assigns a worker for this client.
   Future<void> _assignWorker() async {
+    // Resolve the manager the caller asked for. Whatever comes back is the only
+    // endpoint contacted - a wrong or unreachable manager must surface, not be
+    // papered over with the production default.
+    final managerUrl = ManagerDiscovery.resolveManagerUrl(config.managerUrl);
+
     try {
-      // Discover the optimal manager URL automatically
-      final managerUrl = await ManagerDiscovery.discoverManagerUrl(config.apiKey);
-      
       final response = await _dio.get(
         '$managerUrl/api/cluster/select-worker',
         queryParameters: {
@@ -513,7 +518,7 @@ class OddSocketsClient {
           'workerUrl': _workerUrl,
           'session': _sessionInfo,
           'clientIdentifier': _clientIdentifier,
-          'managerUrl': managerUrl, // Include discovered manager URL for debugging
+          'managerUrl': managerUrl, // The manager actually used, for debugging
           'timestamp': DateTime.now().toIso8601String(),
         });
       } else {
@@ -522,7 +527,6 @@ class OddSocketsClient {
         );
       }
     } on DioException catch (error) {
-      // If manager is offline, try fallback logic
       if (error.type == DioExceptionType.connectionError) {
         throw const WorkerAssignmentException(
           message: 'Manager is offline. Cannot assign worker without session stickiness.',

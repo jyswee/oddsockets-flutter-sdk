@@ -1,6 +1,7 @@
 import 'package:json_annotation/json_annotation.dart';
 import 'package:meta/meta.dart';
 import 'message.dart';
+import '../services/manager_discovery.dart';
 
 part 'types.g.dart';
 
@@ -537,7 +538,7 @@ class Constants {
   static const String sdkVersion = '0.1.0-beta.1';
   static const String sdkName = 'OddSockets-Flutter-SDK';
   static const String userAgent = '$sdkName/$sdkVersion';
-  static const String defaultManagerUrl = 'https://connect.oddsockets.tyga.network';
+  static const String defaultManagerUrl = ManagerDiscovery.defaultManagerUrl;
   static const Duration defaultTimeout = Duration(seconds: 10);
   static const Duration defaultHeartbeatInterval = Duration(seconds: 30);
   static const int defaultReconnectAttempts = 5;

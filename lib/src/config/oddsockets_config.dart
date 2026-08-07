@@ -1,5 +1,7 @@
 import 'package:meta/meta.dart';
 
+import '../services/manager_discovery.dart';
+
 /// Configuration class for OddSockets client.
 ///
 /// This class holds all configuration parameters needed to connect to OddSockets.
@@ -9,8 +11,12 @@ class OddSocketsConfig {
   /// The API key for authentication
   final String apiKey;
 
-  /// The manager URL for worker assignment
-  final String managerUrl;
+  /// The manager URL for worker assignment.
+  ///
+  /// Null means "not configured": [ManagerDiscovery] then falls back to the
+  /// environment and finally to the public endpoint. Keeping null distinct from
+  /// a value stops a deliberate choice being confused with a default.
+  final String? managerUrl;
 
   /// Optional user ID for the client
   final String? userId;
@@ -30,7 +36,7 @@ class OddSocketsConfig {
   /// Creates a new configuration instance.
   const OddSocketsConfig({
     required this.apiKey,
-    this.managerUrl = 'https://connect.oddsockets.tyga.network',
+    this.managerUrl,
     this.userId,
     this.autoConnect = true,
     this.reconnectAttempts = 5,
@@ -60,12 +66,9 @@ class OddSocketsConfig {
       throw ArgumentError('Invalid API key format');
     }
 
-    if (managerUrl.isEmpty) {
-      throw ArgumentError('Manager URL is required');
-    }
-
-    if (Uri.tryParse(managerUrl)?.hasScheme != true) {
-      throw ArgumentError('Invalid manager URL format');
+    final configuredManagerUrl = managerUrl;
+    if (configuredManagerUrl != null) {
+      ManagerDiscovery.normalizeManagerUrl(configuredManagerUrl);
     }
 
     if (reconnectAttempts < 0) {
@@ -161,7 +164,7 @@ class OddSocketsConfig {
 /// with method chaining and sensible defaults.
 class OddSocketsConfigBuilder {
   String _apiKey = '';
-  String _managerUrl = 'https://connect.oddsockets.tyga.network';
+  String? _managerUrl;
   String? _userId;
   bool _autoConnect = true;
   int _reconnectAttempts = 5;
@@ -174,7 +177,8 @@ class OddSocketsConfigBuilder {
     return this;
   }
 
-  /// Sets the manager URL.
+  /// Sets the manager URL. This value is used verbatim: no other endpoint is
+  /// ever tried on its behalf.
   OddSocketsConfigBuilder managerUrl(String managerUrl) {
     _managerUrl = managerUrl;
     return this;
@@ -220,7 +224,7 @@ class OddSocketsConfigBuilder {
 
   /// Sets common production configuration.
   OddSocketsConfigBuilder production() {
-    _managerUrl = 'https://connect.oddsockets.tyga.network';
+    _managerUrl = ManagerDiscovery.defaultManagerUrl;
     _timeout = const Duration(seconds: 10);
     _heartbeatInterval = const Duration(seconds: 30);
     return this;
