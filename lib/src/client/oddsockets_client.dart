@@ -351,44 +351,42 @@ class OddSocketsClient {
 
   /// Publishes multiple messages in bulk.
   ///
+  /// There is no batch operation on the wire: the worker only understands
+  /// `publish`, so this fans out into one publish per message, in order. This
+  /// previously emitted a `bulk_publish` event that no worker has ever handled,
+  /// so the batch could never succeed.
+  ///
   /// Per-message rejections come back in the returned results. An
-  /// operation-level failure - auth rejected, connection dropped, the worker
-  /// refusing the batch - is thrown instead, because reporting it as N failed
-  /// messages makes it indistinguishable from N individually rejected messages.
+  /// operation-level failure - not connected at all - is thrown instead,
+  /// because reporting it as N failed messages makes it indistinguishable from
+  /// N individually rejected messages.
   Future<List<BulkResult>> publishBulk(List<BulkMessage> messages) async {
     if (!isConnected) {
       throw const ConnectionException(message: 'Not connected to OddSockets');
     }
 
-    if (messages.isEmpty) {
-      return [];
+    final results = <BulkResult>[];
+
+    for (final message in messages) {
+      try {
+        final result = await channel(message.channel).publish(
+          message.message,
+          message.options,
+        );
+        results.add(BulkResult(success: true, result: result));
+      } on ConnectionException {
+        // The connection dropped mid-batch. Every remaining message would
+        // report the same failure, which would look like a per-message
+        // rejection rather than the batch being cut short.
+        _logger.e('Bulk publish aborted: connection lost');
+        rethrow;
+      } catch (error) {
+        _logger.w('Bulk publish rejected a message', error: error);
+        results.add(BulkResult(success: false, error: error.toString()));
+      }
     }
 
-    final payload = {
-      'type': 'bulk_publish',
-      'messages': messages.map((m) => m.toJson()).toList(),
-      'timestamp': DateTime.now().toIso8601String(),
-    };
-
-    final Map<String, dynamic> response;
-    try {
-      response = await _sendMessage(payload);
-    } catch (error) {
-      _logger.e('Bulk publish failed', error: error);
-      rethrow;
-    }
-
-    if (response['success'] == true && response['results'] is List) {
-      return (response['results'] as List)
-          .map((result) => BulkResult.fromJson(result as Map<String, dynamic>))
-          .toList();
-    }
-
-    final failure = MessageDeliveryException(
-      message: 'Bulk publish failed: ${response['error'] ?? 'Unknown error'}',
-    );
-    _logger.e('Bulk publish failed', error: failure);
-    throw failure;
+    return results;
   }
 
   /// Maps a client operation to the Socket.IO event the worker replies with.
