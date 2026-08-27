@@ -24,6 +24,41 @@ await channel.subscribe((msg) => print('Received: ${msg.data}'));
 await channel.publish({'text': 'Hello from Flutter'});
 ```
 
+## Token auth for game clients (`tokenProvider`)
+
+Ship apps with **no API key in the binary**. Your backend verifies the player
+(its own login/JWT), calls `POST /v1/token` on the OddSockets front door, and
+returns a short-lived realtime token. The SDK asks your `tokenProvider` for a
+fresh token before every (re)connect and silently refreshes it before expiry.
+
+```dart
+final config = OddSocketsConfigBuilder()
+    .tokenProvider(() async {
+      // Ask YOUR backend for a short-lived OddSockets token.
+      final res = await http.post(
+        Uri.parse('https://your-game-backend.example/realtime-token'),
+        headers: {'Authorization': 'Bearer $playerJwt'},
+      );
+      // Return the mint response as-is: {token, expiresAt, exp, ...}
+      // (a raw JWT string also works).
+      return jsonDecode(res.body) as Map<String, dynamic>;
+    })
+    .userId('player-42')
+    .build();
+
+final client = OddSocketsClient(config);
+await client.connect();
+```
+
+Notes:
+
+- `tokenProvider` is used **instead of** `apiKey` — configure one or the other.
+- The refresh fires `tokenRefreshLeadMs` (default 120000 ms) before expiry and
+  emits a `token_refreshed` event you can observe via
+  `client.on('token_refreshed', (info) => ...)` or the `eventStream`. A failed
+  refresh emits `token_refresh_failed` instead.
+- Tune the lead with `.tokenRefreshLeadMs(120000)` on the builder.
+
 ## Manager URL
 
 The client asks a manager for a worker. Point it at a self-hosted or QA manager
