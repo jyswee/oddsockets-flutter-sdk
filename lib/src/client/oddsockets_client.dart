@@ -72,6 +72,15 @@ class OddSocketsClient {
   /// Heartbeat timer
   Timer? _heartbeatTimer;
 
+  /// Current minted realtime token (token mode only)
+  String? _currentToken;
+
+  /// Epoch-ms expiry of [_currentToken], when known
+  int? _tokenExpiresAt;
+
+  /// Silent pre-expiry token refresh timer
+  Timer? _tokenRefreshTimer;
+
   /// Current reconnection attempt count
   int _reconnectAttempts = 0;
 
@@ -191,7 +200,10 @@ class OddSocketsClient {
       sendTimeout: config.timeout,
       headers: {
         'User-Agent': Constants.userAgent,
-        'Authorization': 'Bearer ${config.apiKey}',
+        // In token mode the credential travels as a query/handshake token,
+        // not as a static bearer key.
+        if (config.tokenProvider == null)
+          'Authorization': 'Bearer ${config.apiKey}',
       },
     ));
 
@@ -260,6 +272,11 @@ class OddSocketsClient {
       // Validate configuration
       config.validate();
 
+      // Step 0 (token mode): resolve a FRESH token before every (re)connect.
+      if (config.tokenProvider != null) {
+        await _resolveToken();
+      }
+
       // Get worker assignment
       await _assignWorker();
 
@@ -268,6 +285,9 @@ class OddSocketsClient {
 
       // Start heartbeat
       _startHeartbeat();
+
+      // Arm the silent pre-expiry token refresh (token mode only).
+      _scheduleTokenRefresh();
 
       // Reset reconnection attempts
       _reconnectAttempts = 0;
@@ -309,6 +329,8 @@ class OddSocketsClient {
     // Cancel timers
     _reconnectTimer?.cancel();
     _heartbeatTimer?.cancel();
+    _tokenRefreshTimer?.cancel();
+    _tokenRefreshTimer = null;
 
     // Close WebSocket
     await _webSocket?.sink.close();
@@ -491,7 +513,11 @@ class OddSocketsClient {
       final response = await _dio.get(
         '$managerUrl/api/cluster/select-worker',
         queryParameters: {
-          'apiKey': config.apiKey,
+          // Token mode presents the minted token in place of the API key.
+          if (config.tokenProvider != null)
+            'token': _currentToken
+          else
+            'apiKey': config.apiKey,
           'userId': config.userId ?? _clientIdentifier,
           'clientIdentifier': _clientIdentifier,
         },
@@ -596,9 +622,11 @@ class OddSocketsClient {
 
     switch (type) {
       case '0': // Engine.IO OPEN -> send Socket.IO CONNECT with auth payload.
-        _webSocket!.sink.add(
-          '40${jsonEncode({'apiKey': config.apiKey, 'userId': config.userId})}',
-        );
+        // A minted short-lived token (token mode) replaces the static API key.
+        final auth = config.tokenProvider != null
+            ? {'token': _currentToken, 'userId': config.userId}
+            : {'apiKey': config.apiKey, 'userId': config.userId};
+        _webSocket!.sink.add('40${jsonEncode(auth)}');
         break;
       case '2': // Engine.IO PING -> PONG.
         _webSocket!.sink.add('3');
@@ -992,7 +1020,8 @@ class OddSocketsClient {
   String _generateClientIdentifier() {
     // Create a consistent identifier based on API key and user ID
     final baseId = config.userId ?? 'default';
-    final apiKeyHash = _hashString(config.apiKey);
+    final seed = config.apiKey.isNotEmpty ? config.apiKey : 'token-client';
+    final apiKeyHash = _hashString(seed);
     return '${apiKeyHash}_$baseId';
   }
   
@@ -1006,6 +1035,114 @@ class OddSocketsClient {
       hash = hash & 0xFFFFFFFF; // Convert to 32-bit integer
     }
     return hash.abs();
+  }
+
+  /// Resolves a fresh token from the configured provider (token mode).
+  ///
+  /// The provider may return a raw JWT string or a map shaped like the
+  /// `/v1/token` mint response `{token, expiresAt, exp, ...}`.
+  Future<void> _resolveToken() async {
+    final provider = config.tokenProvider!;
+
+    Object result;
+    try {
+      result = await Future.sync(() => provider());
+    } catch (error) {
+      throw AuthenticationException(
+        message: 'tokenProvider failed: $error',
+      );
+    }
+
+    final extracted = _extractToken(result);
+    final token = extracted.$1;
+    if (token == null || token.isEmpty) {
+      throw const AuthenticationException(
+        message: 'tokenProvider returned an empty token',
+      );
+    }
+
+    _currentToken = token;
+    _tokenExpiresAt = extracted.$2 ?? _expiryFromJwt(token);
+  }
+
+  /// Extracts (token, expiryEpochMs) from a provider result.
+  (String?, int?) _extractToken(Object result) {
+    if (result is String) return (result, null);
+    if (result is Map) {
+      final token = result['token']?.toString();
+
+      // exp: epoch seconds (JWT convention).
+      final exp = result['exp'];
+      if (exp is num) return (token, exp.toInt() * 1000);
+
+      final expiresAt = result['expiresAt'];
+      if (expiresAt is num) {
+        final v = expiresAt.toInt();
+        // Values below 1e12 are epoch seconds, not milliseconds.
+        return (token, v < 1000000000000 ? v * 1000 : v);
+      }
+      if (expiresAt is String) {
+        final parsed = DateTime.tryParse(expiresAt);
+        if (parsed != null) return (token, parsed.millisecondsSinceEpoch);
+      }
+      return (token, null);
+    }
+    return (null, null);
+  }
+
+  /// Falls back to decoding the JWT payload's `exp` claim (epoch ms).
+  int? _expiryFromJwt(String token) {
+    final parts = token.split('.');
+    if (parts.length < 2) return null;
+    try {
+      final payload = jsonDecode(
+        utf8.decode(base64Url.decode(base64Url.normalize(parts[1]))),
+      );
+      final exp = payload is Map ? payload['exp'] : null;
+      if (exp is num) return exp.toInt() * 1000;
+    } catch (_) {
+      // Opaque token - expiry unknown; no silent refresh possible.
+    }
+    return null;
+  }
+
+  /// Arms the silent pre-expiry refresh timer (token mode with known expiry).
+  void _scheduleTokenRefresh() {
+    _tokenRefreshTimer?.cancel();
+    _tokenRefreshTimer = null;
+
+    if (config.tokenProvider == null) return;
+    final expiresAt = _tokenExpiresAt;
+    if (expiresAt == null) return;
+
+    final delayMs = (expiresAt -
+            DateTime.now().millisecondsSinceEpoch -
+            config.tokenRefreshLeadMs)
+        .clamp(0, 1 << 50);
+
+    _tokenRefreshTimer = Timer(Duration(milliseconds: delayMs), () async {
+      if (_disposed) return;
+      try {
+        await _resolveToken();
+        _logger.i('Realtime token silently refreshed');
+        final info = {'expiresAt': _tokenExpiresAt};
+        _dispatchListeners('token_refreshed', info);
+        _eventSubject.add({
+          'type': 'token_refreshed',
+          'expiresAt': _tokenExpiresAt,
+          'timestamp': DateTime.now().toIso8601String(),
+        });
+        _scheduleTokenRefresh();
+      } catch (error) {
+        _logger.w('Token refresh failed', error: error);
+        _dispatchListeners('token_refresh_failed', {'error': error.toString()});
+        _eventSubject.add({
+          'type': 'token_refresh_failed',
+          'error': error.toString(),
+          'timestamp': DateTime.now().toIso8601String(),
+        });
+      }
+    });
   }
 
   /// Disposes of the client and releases resources.
@@ -1030,6 +1167,8 @@ class OddSocketsClient {
     _connectivitySubscription = null;
     _reconnectTimer?.cancel();
     _heartbeatTimer?.cancel();
+    _tokenRefreshTimer?.cancel();
+    _tokenRefreshTimer = null;
 
     // Close streams
     await _connectionStateSubject.close();

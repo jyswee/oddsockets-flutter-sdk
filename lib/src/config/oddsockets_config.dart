@@ -1,6 +1,15 @@
+import 'dart:async';
+
 import 'package:meta/meta.dart';
 
 import '../services/manager_discovery.dart';
+
+/// Callback that mints a short-lived realtime token for keyless auth.
+///
+/// May return either a raw JWT string or a map shaped like the `/v1/token`
+/// mint response: `{token, expiresAt, exp, ...}`. It is invoked before every
+/// (re)connect and again shortly before the current token expires.
+typedef TokenProvider = FutureOr<Object> Function();
 
 /// Configuration class for OddSockets client.
 ///
@@ -8,8 +17,18 @@ import '../services/manager_discovery.dart';
 /// Use [OddSocketsConfigBuilder] for a fluent configuration experience.
 @immutable
 class OddSocketsConfig {
-  /// The API key for authentication
+  /// The API key for authentication.
+  ///
+  /// Empty when a [tokenProvider] is used instead (keyless token auth).
   final String apiKey;
+
+  /// Callback that mints a short-lived realtime token, used INSTEAD of an
+  /// API key. When set, the client resolves a fresh token before every
+  /// (re)connect and silently refreshes it before expiry.
+  final TokenProvider? tokenProvider;
+
+  /// How long before token expiry the silent refresh fires, in milliseconds.
+  final int tokenRefreshLeadMs;
 
   /// The manager URL for worker assignment.
   ///
@@ -35,7 +54,9 @@ class OddSocketsConfig {
 
   /// Creates a new configuration instance.
   const OddSocketsConfig({
-    required this.apiKey,
+    this.apiKey = '',
+    this.tokenProvider,
+    this.tokenRefreshLeadMs = 120000,
     this.managerUrl,
     this.userId,
     this.autoConnect = true,
@@ -58,12 +79,18 @@ class OddSocketsConfig {
   ///
   /// Throws [ArgumentError] if configuration is invalid.
   void validate() {
-    if (apiKey.isEmpty) {
-      throw ArgumentError('API key is required');
+    if (tokenProvider == null) {
+      if (apiKey.isEmpty) {
+        throw ArgumentError('Either an API key or a tokenProvider is required');
+      }
+
+      if (!apiKey.startsWith('ak_')) {
+        throw ArgumentError('Invalid API key format');
+      }
     }
 
-    if (!apiKey.startsWith('ak_')) {
-      throw ArgumentError('Invalid API key format');
+    if (tokenRefreshLeadMs < 0) {
+      throw ArgumentError('tokenRefreshLeadMs must be non-negative');
     }
 
     final configuredManagerUrl = managerUrl;
@@ -88,6 +115,8 @@ class OddSocketsConfig {
   Map<String, dynamic> toMap() {
     return {
       'apiKey': apiKey,
+      'tokenProvider': tokenProvider != null,
+      'tokenRefreshLeadMs': tokenRefreshLeadMs,
       'managerUrl': managerUrl,
       'userId': userId,
       'autoConnect': autoConnect,
@@ -100,6 +129,8 @@ class OddSocketsConfig {
   /// Creates a copy of this configuration with the given fields replaced.
   OddSocketsConfig copyWith({
     String? apiKey,
+    TokenProvider? tokenProvider,
+    int? tokenRefreshLeadMs,
     String? managerUrl,
     String? userId,
     bool? autoConnect,
@@ -109,6 +140,8 @@ class OddSocketsConfig {
   }) {
     return OddSocketsConfig(
       apiKey: apiKey ?? this.apiKey,
+      tokenProvider: tokenProvider ?? this.tokenProvider,
+      tokenRefreshLeadMs: tokenRefreshLeadMs ?? this.tokenRefreshLeadMs,
       managerUrl: managerUrl ?? this.managerUrl,
       userId: userId ?? this.userId,
       autoConnect: autoConnect ?? this.autoConnect,
@@ -123,6 +156,8 @@ class OddSocketsConfig {
     if (identical(this, other)) return true;
     return other is OddSocketsConfig &&
         other.apiKey == apiKey &&
+        other.tokenProvider == tokenProvider &&
+        other.tokenRefreshLeadMs == tokenRefreshLeadMs &&
         other.managerUrl == managerUrl &&
         other.userId == userId &&
         other.autoConnect == autoConnect &&
@@ -135,6 +170,8 @@ class OddSocketsConfig {
   int get hashCode {
     return Object.hash(
       apiKey,
+      tokenProvider,
+      tokenRefreshLeadMs,
       managerUrl,
       userId,
       autoConnect,
@@ -146,8 +183,11 @@ class OddSocketsConfig {
 
   @override
   String toString() {
+    final auth = tokenProvider != null
+        ? 'tokenProvider'
+        : '${apiKey.length > 10 ? apiKey.substring(0, 10) : apiKey}...';
     return 'OddSocketsConfig('
-        'apiKey: ${apiKey.substring(0, 10)}..., '
+        'auth: $auth, '
         'managerUrl: $managerUrl, '
         'userId: $userId, '
         'autoConnect: $autoConnect, '
@@ -164,6 +204,8 @@ class OddSocketsConfig {
 /// with method chaining and sensible defaults.
 class OddSocketsConfigBuilder {
   String _apiKey = '';
+  TokenProvider? _tokenProvider;
+  int _tokenRefreshLeadMs = 120000;
   String? _managerUrl;
   String? _userId;
   bool _autoConnect = true;
@@ -174,6 +216,20 @@ class OddSocketsConfigBuilder {
   /// Sets the API key.
   OddSocketsConfigBuilder apiKey(String apiKey) {
     _apiKey = apiKey;
+    return this;
+  }
+
+  /// Sets a token provider for keyless minted-token auth (used INSTEAD of an
+  /// API key). The callback may return a raw JWT string or a map shaped like
+  /// the `/v1/token` mint response.
+  OddSocketsConfigBuilder tokenProvider(TokenProvider provider) {
+    _tokenProvider = provider;
+    return this;
+  }
+
+  /// Sets how long before token expiry the silent refresh fires (ms).
+  OddSocketsConfigBuilder tokenRefreshLeadMs(int leadMs) {
+    _tokenRefreshLeadMs = leadMs;
     return this;
   }
 
@@ -252,6 +308,8 @@ class OddSocketsConfigBuilder {
   OddSocketsConfig build() {
     final config = OddSocketsConfig(
       apiKey: _apiKey,
+      tokenProvider: _tokenProvider,
+      tokenRefreshLeadMs: _tokenRefreshLeadMs,
       managerUrl: _managerUrl,
       userId: _userId,
       autoConnect: _autoConnect,
