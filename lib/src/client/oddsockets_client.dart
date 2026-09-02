@@ -692,8 +692,12 @@ class OddSocketsClient {
     final channelName = payload['channel'] as String?;
 
     // Fan out to raw event listeners first. This carries the Slack-like
-    // enhanced broadcasts (reaction_added, user_typing, thread_reply, ...) and
-    // the request/response events the enhanced helpers await via once().
+    // enhanced broadcasts (reaction_added, user_typing, thread_reply, ...), the
+    // challenge/leaderboard/achievement broadcasts (challenge_progress,
+    // leaderboard_rank_change, challenge_complete, achievement_unlock,
+    // achievement_progress, challenge_invited, challenge_reply_received,
+    // challenge_invite_cancelled) and the request/response events the enhanced
+    // helpers await via once().
     _dispatchListeners(event, payload);
 
     switch (event) {
