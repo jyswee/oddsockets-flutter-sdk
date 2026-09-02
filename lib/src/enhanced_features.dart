@@ -747,11 +747,308 @@ class EnhancedFeatures {
 
     _client.once('user_search_results', successHandler);
     _client.once('error', errorHandler);
-    
+
     final params = {'userId': userId, 'limit': limit};
     if (query != null) params['query'] = query;
-    
+
     _client.emit('search_by_user', params);
+
+    return completer.future.timeout(_timeout);
+  }
+
+  // MARK: - Challenge / Leaderboard / Achievement Events
+  //
+  // Server-authoritative challenge lifecycle. Progress and completions land on
+  // the shared room envelope so every member (and any partner resultWebhookUrl)
+  // sees challenge_progress / leaderboard_rank_change / challenge_complete /
+  // achievement_unlock — subscribe with client.on('leaderboard_rank_change', ...).
+
+  /// Create (register) a challenge run and its optional result-webhook target.
+  ///
+  /// [params]: {challengeId, metric, ranked?, channel?, resultWebhookUrl?,
+  /// standingsUrl?}. Resolves with {challengeId, metric, ranked, startedAt, channel}.
+  Future<Map<String, dynamic>> createChallenge(Map<String, dynamic> params) async {
+    if (!_client.isConnected) {
+      throw const ConnectionException(message: 'Not connected to OddSockets');
+    }
+
+    final completer = Completer<Map<String, dynamic>>();
+
+    void successHandler(dynamic data) {
+      if (data is Map<String, dynamic>) {
+        completer.complete(data);
+      }
+    }
+
+    void errorHandler(dynamic data) {
+      if (data is Map<String, dynamic> && data['event'] == 'challenge_create') {
+        completer.completeError(
+          MessageDeliveryException(message: data['message']?.toString() ?? 'Unknown error')
+        );
+      }
+    }
+
+    _client.once('challenge_create_success', successHandler);
+    _client.once('error', errorHandler);
+    _client.emit('challenge_create', params);
+
+    return completer.future.timeout(_timeout);
+  }
+
+  /// Report a progress value for the connected player. Fire-and-forget: the
+  /// server echoes challenge_progress (and leaderboard_rank_change if the player
+  /// moved) to the room, which arrives via client.on(...). Pass a stable eventId
+  /// to make retries idempotent.
+  ///
+  /// [params]: {challengeId, value, metric?, eventId?, cohort?, platform?, channel?}.
+  void reportProgress(Map<String, dynamic> params) {
+    if (!_client.isConnected) return;
+    _client.emit('challenge_progress', params);
+  }
+
+  /// Complete the connected player's run. Resolves with the server-authoritative
+  /// result; the room also receives a challenge_complete broadcast.
+  ///
+  /// [params]: {challengeId, outcome, eventId?, reward?}. outcome ∈
+  /// {completed, failed, expired, conceded, tied} (chess/turn-based mapping:
+  /// win=completed+rank1, loss=failed, draw=tied, resign=conceded, timeout=expired).
+  /// Resolves with {challengeId, outcome, finalValue, rank}.
+  Future<Map<String, dynamic>> completeChallenge(Map<String, dynamic> params) async {
+    if (!_client.isConnected) {
+      throw const ConnectionException(message: 'Not connected to OddSockets');
+    }
+
+    final completer = Completer<Map<String, dynamic>>();
+
+    void successHandler(dynamic data) {
+      if (data is Map<String, dynamic>) {
+        completer.complete(data);
+      }
+    }
+
+    void errorHandler(dynamic data) {
+      if (data is Map<String, dynamic> && data['event'] == 'challenge_complete') {
+        completer.completeError(
+          MessageDeliveryException(message: data['message']?.toString() ?? 'Unknown error')
+        );
+      }
+    }
+
+    _client.once('challenge_complete_success', successHandler);
+    _client.once('error', errorHandler);
+    _client.emit('challenge_complete', params);
+
+    return completer.future.timeout(_timeout);
+  }
+
+  /// Report achievement progress or unlock. Fire-and-forget. Pass percentComplete
+  /// (0-100) for progressive achievements: <100 broadcasts achievement_progress
+  /// (status in_progress); >=100 or omitted broadcasts achievement_unlock (status
+  /// unlocked, banner). State is persisted server-side and queryable via
+  /// getAchievements(). Arrives on peers via
+  /// client.on('achievement_progress' | 'achievement_unlock', ...).
+  ///
+  /// [params]: {achievementId, name?, tier?, percentComplete?, challengeId?, channel?}.
+  void unlockAchievement(Map<String, dynamic> params) {
+    if (!_client.isConnected) return;
+    _client.emit('achievement_unlock', params);
+  }
+
+  /// Fetch server-ordered leaderboard standings for a ranked challenge. Resolves
+  /// with the top-N and the caller's own rank.
+  ///
+  /// [params]: {challengeId, limit?=20, offset?=0}. Resolves with {challengeId,
+  /// metric, standings: [{identity, value, rank, cohort, platform}], yourRank}.
+  Future<Map<String, dynamic>> getStandings(Map<String, dynamic> params) async {
+    if (!_client.isConnected) {
+      throw const ConnectionException(message: 'Not connected to OddSockets');
+    }
+
+    final completer = Completer<Map<String, dynamic>>();
+
+    void successHandler(dynamic data) {
+      if (data is Map<String, dynamic>) {
+        completer.complete(data);
+      }
+    }
+
+    void errorHandler(dynamic data) {
+      if (data is Map<String, dynamic> && data['event'] == 'challenge_standings') {
+        completer.completeError(
+          MessageDeliveryException(message: data['message']?.toString() ?? 'Unknown error')
+        );
+      }
+    }
+
+    _client.once('challenge_standings_success', successHandler);
+    _client.once('error', errorHandler);
+    _client.emit('challenge_standings', params);
+
+    return completer.future.timeout(_timeout);
+  }
+
+  /// Query persisted achievement state for the connected player. Pass
+  /// achievementId to fetch a single one.
+  ///
+  /// [params]: {achievementId?}. Resolves with {achievements:
+  /// [{achievementId, percentComplete, status, unlockedAt, name, tier}]}.
+  Future<Map<String, dynamic>> getAchievements([Map<String, dynamic> params = const {}]) async {
+    if (!_client.isConnected) {
+      throw const ConnectionException(message: 'Not connected to OddSockets');
+    }
+
+    final completer = Completer<Map<String, dynamic>>();
+
+    void successHandler(dynamic data) {
+      if (data is Map<String, dynamic>) {
+        completer.complete(data);
+      }
+    }
+
+    void errorHandler(dynamic data) {
+      if (data is Map<String, dynamic> && data['event'] == 'achievement_query') {
+        completer.completeError(
+          MessageDeliveryException(message: data['message']?.toString() ?? 'Unknown error')
+        );
+      }
+    }
+
+    _client.once('achievement_state', successHandler);
+    _client.once('error', errorHandler);
+    _client.emit('achievement_query', params);
+
+    return completer.future.timeout(_timeout);
+  }
+
+  /// Send a directed 1:1 challenge/invite to a specific player. The invitee
+  /// receives a challenge_invited event via client.on('challenge_invited', ...);
+  /// resolves when the server persists it. The invite is stored with a TTL so an
+  /// offline player can pull it on reconnect (getChallengeInvites). `type` is
+  /// free-form, so the same primitive carries clan/party invites.
+  ///
+  /// [params]: {toUserId, type?='match', payload?<=8KB, ttl?=300, channel?, inviteId?}.
+  /// Resolves with {inviteId, toUserId, type, status:'pending', expiresAt}.
+  Future<Map<String, dynamic>> sendChallengeInvite(Map<String, dynamic> params) async {
+    if (!_client.isConnected) {
+      throw const ConnectionException(message: 'Not connected to OddSockets');
+    }
+
+    final completer = Completer<Map<String, dynamic>>();
+
+    void successHandler(dynamic data) {
+      if (data is Map<String, dynamic>) {
+        completer.complete(data);
+      }
+    }
+
+    void errorHandler(dynamic data) {
+      if (data is Map<String, dynamic> && data['event'] == 'challenge_invite') {
+        completer.completeError(
+          MessageDeliveryException(message: data['message']?.toString() ?? 'Unknown error')
+        );
+      }
+    }
+
+    _client.once('challenge_invite_success', successHandler);
+    _client.once('error', errorHandler);
+    _client.emit('challenge_invite', params);
+
+    return completer.future.timeout(_timeout);
+  }
+
+  /// Accept or decline a received invite. The original inviter is notified via
+  /// client.on('challenge_reply_received', ...).
+  ///
+  /// [params]: {inviteId, accept, reason?}. Resolves with {inviteId, accept,
+  /// type, payload, channel}.
+  Future<Map<String, dynamic>> replyChallengeInvite(Map<String, dynamic> params) async {
+    if (!_client.isConnected) {
+      throw const ConnectionException(message: 'Not connected to OddSockets');
+    }
+
+    final completer = Completer<Map<String, dynamic>>();
+
+    void successHandler(dynamic data) {
+      if (data is Map<String, dynamic>) {
+        completer.complete(data);
+      }
+    }
+
+    void errorHandler(dynamic data) {
+      if (data is Map<String, dynamic> && data['event'] == 'challenge_reply') {
+        completer.completeError(
+          MessageDeliveryException(message: data['message']?.toString() ?? 'Unknown error')
+        );
+      }
+    }
+
+    _client.once('challenge_reply_success', successHandler);
+    _client.once('error', errorHandler);
+    _client.emit('challenge_reply', params);
+
+    return completer.future.timeout(_timeout);
+  }
+
+  /// Cancel a pending invite you sent. The invitee is notified via
+  /// client.on('challenge_invite_cancelled', ...).
+  ///
+  /// [params]: {inviteId}. Resolves with {inviteId}.
+  Future<Map<String, dynamic>> cancelChallengeInvite(Map<String, dynamic> params) async {
+    if (!_client.isConnected) {
+      throw const ConnectionException(message: 'Not connected to OddSockets');
+    }
+
+    final completer = Completer<Map<String, dynamic>>();
+
+    void successHandler(dynamic data) {
+      if (data is Map<String, dynamic>) {
+        completer.complete(data);
+      }
+    }
+
+    void errorHandler(dynamic data) {
+      if (data is Map<String, dynamic> && data['event'] == 'challenge_invite_cancel') {
+        completer.completeError(
+          MessageDeliveryException(message: data['message']?.toString() ?? 'Unknown error')
+        );
+      }
+    }
+
+    _client.once('challenge_invite_cancel_success', successHandler);
+    _client.once('error', errorHandler);
+    _client.emit('challenge_invite_cancel', params);
+
+    return completer.future.timeout(_timeout);
+  }
+
+  /// Pull the connected player's still-pending invites (e.g. on reconnect).
+  ///
+  /// Resolves with {invites: [{inviteId, fromUserId, fromIdentity, type, payload,
+  /// status, channel, createdAt, expiresAt}]}.
+  Future<Map<String, dynamic>> getChallengeInvites() async {
+    if (!_client.isConnected) {
+      throw const ConnectionException(message: 'Not connected to OddSockets');
+    }
+
+    final completer = Completer<Map<String, dynamic>>();
+
+    void successHandler(dynamic data) {
+      if (data is Map<String, dynamic>) {
+        completer.complete(data);
+      }
+    }
+
+    void errorHandler(dynamic data) {
+      if (data is Map<String, dynamic> && data['event'] == 'challenge_invites_query') {
+        completer.completeError(
+          MessageDeliveryException(message: data['message']?.toString() ?? 'Unknown error')
+        );
+      }
+    }
+
+    _client.once('challenge_invites', successHandler);
+    _client.once('error', errorHandler);
+    _client.emit('challenge_invites_query', {});
 
     return completer.future.timeout(_timeout);
   }
