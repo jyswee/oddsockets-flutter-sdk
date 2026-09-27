@@ -3,7 +3,7 @@ import 'dart:typed_data';
 
 import '../exceptions/oddsockets_exception.dart';
 
-/// Message size limits (industry standard - matches PubNub)
+/// Platform message size limit, enforced server-side
 class MessageSizeLimits {
   static const int maxMessageSize = 32768; // 32KB in bytes
   static const int maxMessageSizeKB = 32;
@@ -24,7 +24,7 @@ class MessageSizeValidator {
     if (messageSize > MessageSizeLimits.maxMessageSize) {
       throw MessageSizeException(
         message: 'Message size (${(messageSize / 1024).round()}KB) exceeds maximum allowed size of ${MessageSizeLimits.maxMessageSizeKB}KB. '
-                'This limit matches industry standards (PubNub, Socket.IO) for reliable real-time messaging.',
+                'Split the payload, or publish a reference to it instead.',
         actualSize: messageSize,
         maxSize: MessageSizeLimits.maxMessageSize,
       );
