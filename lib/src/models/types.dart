@@ -595,3 +595,60 @@ class ErrorCodes {
   static const String operationTimeout = 'OPERATION_TIMEOUT';
   static const String invalidChannelName = 'INVALID_CHANNEL_NAME';
 }
+
+/// Usage / analytics statistics for the calling API key's owner scope.
+///
+/// Every tile is genuinely optional: the manager returns JSON null for a tile it
+/// cannot compute yet, which is NOT a real zero. The nullable fields preserve
+/// that distinction - a missing tile stays `null`, never coerced to 0. Hand-rolled
+/// [fromJson] (no code generation) so it drops in without a build_runner step.
+@immutable
+class UsageStats {
+  const UsageStats({
+    this.mau,
+    this.dau,
+    this.totalMessages,
+    this.errorRate,
+    this.ownerScope,
+    this.detail,
+    this.timestamp,
+  });
+
+  /// Monthly active users, or null when the manager has not computed it.
+  final int? mau;
+
+  /// Daily active users, or null when the manager has not computed it.
+  final int? dau;
+
+  /// Total messages, or null when the manager has not computed it.
+  final int? totalMessages;
+
+  /// Error rate, or null when the manager has not computed it.
+  final double? errorRate;
+
+  /// Billing/analytics owner scope the tiles were aggregated under.
+  final String? ownerScope;
+
+  /// Human-readable detail string from the manager, if any.
+  final String? detail;
+
+  /// ISO-8601 timestamp the snapshot was produced, if any.
+  final String? timestamp;
+
+  factory UsageStats.fromJson(Map<String, dynamic> json) {
+    final tiles = json['tiles'];
+    final tileMap = tiles is Map ? tiles : const {};
+    // A JSON null (or absent key) stays null; a real number is preserved as-is.
+    int? asInt(dynamic v) => v is num ? v.toInt() : null;
+    double? asDouble(dynamic v) => v is num ? v.toDouble() : null;
+    return UsageStats(
+      mau: asInt(tileMap['mau']),
+      dau: asInt(tileMap['dau']),
+      totalMessages: asInt(tileMap['totalMessages']),
+      errorRate: asDouble(tileMap['errorRate']),
+      ownerScope: json['ownerScope'] as String?,
+      detail: json['detail'] as String?,
+      timestamp: json['timestamp'] as String?,
+    );
+  }
+}

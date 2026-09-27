@@ -411,6 +411,58 @@ class OddSocketsClient {
     return results;
   }
 
+  /// Fetches usage / analytics statistics for the API key's owner scope.
+  ///
+  /// REQUIRES an API key: keyless (tokenProvider) clients have no owner scope to
+  /// query and this throws [InvalidConfigurationException]. Discovers the manager
+  /// the same way worker selection does, then GETs `{managerUrl}/api/tenant/usage`
+  /// with an `X-API-Key` header. Tiles the manager reported as null are preserved
+  /// as `null` on the returned [UsageStats] - never coerced to zero.
+  Future<UsageStats> getUsageStats() async {
+    // Keyless/token clients have no owner scope to query. Mirror the JS SDK's
+    // guard exactly (message text is contract).
+    if (config.tokenProvider != null || config.apiKey.isEmpty) {
+      throw const InvalidConfigurationException(
+        message:
+            'getUsageStats requires an apiKey (keyless/token clients have no owner scope to query)',
+      );
+    }
+
+    // Resolve the manager exactly as worker selection does.
+    final managerUrl = ManagerDiscovery.resolveManagerUrl(config.managerUrl);
+
+    try {
+      final response = await _dio.get(
+        '$managerUrl/api/tenant/usage',
+        options: Options(
+          headers: {
+            'X-API-Key': config.apiKey,
+            'User-Agent': 'OddSockets-Flutter-SDK/1.0.0',
+          },
+        ),
+      );
+
+      if (response.statusCode == 200 && response.data is Map) {
+        return UsageStats.fromJson(
+          Map<String, dynamic>.from(response.data as Map),
+        );
+      }
+      throw WorkerAssignmentException(
+        message: 'Usage stats request returned ${response.statusCode}',
+      );
+    } on DioException catch (error) {
+      if (error.response?.statusCode == 401) {
+        throw const InvalidApiKeyException();
+      } else if (error.response?.statusCode == 403) {
+        throw const AuthenticationException();
+      }
+      throw WorkerAssignmentException(
+        message: 'Usage stats request failed: ${error.message}',
+        cause: error,
+      );
+    }
+  }
+
   /// Maps a client operation to the Socket.IO event the worker replies with.
   static const Map<String, String> _responseEventFor = {
     'subscribe': 'subscribed',
