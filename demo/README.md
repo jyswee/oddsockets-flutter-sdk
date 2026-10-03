@@ -16,8 +16,6 @@ live platform. Reproduce it yourself in one command (see below) - here is a real
 
 ```
 [connect] connecting both clients...
-[alice] worker [instance]
-[bob]   worker [instance]
 [connect] alice = Connected, bob = Connected
 [alice] subscribed to demo-126109 (presence on)
 [bob] published, messageId = d6d5ac6e-8b12-44ac-8bcc-9fb197b8de32

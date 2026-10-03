@@ -28,7 +28,6 @@
 ┌─────────────────────────────────────────────────
 │ 💡 Assigned to worker: https://worker1-2.oddsockets.tyga.network
 └─────────────────────────────────────────────────
-[alice] worker [instance]
 ┌─────────────────────────────────────────────────
 │ 🐛 Connection state changed to: Connected
 └─────────────────────────────────────────────────
@@ -44,7 +43,6 @@
 ┌─────────────────────────────────────────────────
 │ 💡 Assigned to worker: https://worker1-2.oddsockets.tyga.network
 └─────────────────────────────────────────────────
-[bob]   worker [instance]
 ┌─────────────────────────────────────────────────
 │ 🐛 Connection state changed to: Connected
 └─────────────────────────────────────────────────
@@ -114,8 +112,8 @@ OK - cross-client round-trip verified
 
 
 # ---- Enhanced-events two-client receive-path ------------------------------
-# Captured 2026-07-23 against the LIVE OddSockets platform (worker
-# [instance]). Same demo image; test/enhanced_test.dart.
+# Captured 2026-07-23 against the LIVE OddSockets platform.
+# Same demo image; test/enhanced_test.dart.
 #
 #   docker build -f demo/Dockerfile -t oddsockets-flutter-demo .
 #   docker run --rm -e ODDSOCKETS_API_KEY=ak_your_key_here oddsockets-flutter-demo
@@ -128,8 +126,6 @@ OK - cross-client round-trip verified
 # travelled through the worker. Process exit code: 0.
 
 [connect] connecting both clients...
-[alice] worker [instance]
-[bob]   worker [instance]
 [connect] alice = Connected, bob = Connected
 [both] subscribed to enh-536143
 [bob] enhanced.startTyping(bob) ...

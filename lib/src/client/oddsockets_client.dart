@@ -585,7 +585,7 @@ class OddSocketsClient {
         _workerId = response.data['workerId'] as String?;
         _sessionInfo = response.data['session'] as Map<String, dynamic>?;
         
-        _logger.i('Assigned to worker: $_workerUrl');
+        _logger.i('Connection endpoint assigned: $_workerUrl');
 
         // Emit worker assigned event
         _eventSubject.add({

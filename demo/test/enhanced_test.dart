@@ -35,17 +35,6 @@ void main() {
       OddSocketsConfig(apiKey: apiKey, userId: 'bob', autoConnect: false),
     );
 
-    alice.eventStream.listen((event) {
-      if (event['type'] == EventType.workerAssigned.name) {
-        print('[alice] worker ${event['workerId']}');
-      }
-    });
-    bob.eventStream.listen((event) {
-      if (event['type'] == EventType.workerAssigned.name) {
-        print('[bob]   worker ${event['workerId']}');
-      }
-    });
-
     final typingSeen = Completer<void>();
     final reactionSeen = Completer<void>();
 

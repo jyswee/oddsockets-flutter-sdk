@@ -47,17 +47,6 @@ void main() {
       OddSocketsConfig(apiKey: apiKey, userId: 'bob', autoConnect: false),
     );
 
-    subscriber.eventStream.listen((event) {
-      if (event['type'] == EventType.workerAssigned.name) {
-        print('[alice] worker ${event['workerId']}');
-      }
-    });
-    publisher.eventStream.listen((event) {
-      if (event['type'] == EventType.workerAssigned.name) {
-        print('[bob]   worker ${event['workerId']}');
-      }
-    });
-
     // Completed as soon as alice sees bob's message (matching nonce).
     final roundTrip = Completer<void>();
 

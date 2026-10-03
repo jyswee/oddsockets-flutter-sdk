@@ -50,13 +50,11 @@ void main() {
     alice.eventStream.listen((e) {
       if (e['type'] == EventType.workerAssigned.name) {
         aliceWorker = e['workerId'] as String?;
-        print('[alice] worker $aliceWorker');
       }
     });
     bob.eventStream.listen((e) {
       if (e['type'] == EventType.workerAssigned.name) {
         bobWorker = e['workerId'] as String?;
-        print('[bob]   worker $bobWorker');
       }
     });
 
@@ -266,8 +264,8 @@ void main() {
       assertion('11 bob sees challenge_invite_cancelled',
           cancelled['inviteId'] == inviteId2, 'evt=$cancelled');
 
-      print('\n[workers] alice=$aliceWorker bob=$bobWorker '
-          '${aliceWorker != null && aliceWorker == bobWorker ? "(SAME worker)" : "(CROSS worker)"}');
+      print('\n[instances] alice and bob were served by '
+          '${aliceWorker != null && aliceWorker == bobWorker ? "the same instance" : "different instances"}');
     } finally {
       await alice.disconnect();
       await bob.disconnect();
